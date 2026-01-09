@@ -1,0 +1,148 @@
+# 1. Instalação das bibliotecas necessárias [cite: 1, 110]
+!pip install -q -U google-generativeai yfinance SpeechRecognition gTTS pydub
+
+# 2. Importações [cite: 5, 6, 7, 51, 52, 112, 113, 114]
+import base64
+import os
+from datetime import datetime
+import google.generativeai as genai
+import yfinance as yf
+import speech_recognition as sr
+from pydub import AudioSegment
+from IPython.display import display, Javascript, Audio
+from google.colab import output
+
+# 3. Configuração da Inteligência Artificial (Gemini) [cite: 116, 117]
+# Nota: Substitua pela sua chave se necessário
+genai.configure(api_key="AIzaSyAHNkiyNRQNHHIF54sDaSRuZzQv_60Mht8")
+model = genai.GenerativeModel('gemini-2.5-flash')
+
+# --- FUNÇÕES DE ÁUDIO ---
+
+def record_audio(filename='input_audio.wav'):
+    """Grava áudio diretamente do navegador no Colab [cite: 8, 9, 10]"""
+    js = Javascript('''
+        async function recordAudio() {
+            const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+            const recorder = new MediaRecorder(stream);
+            const chunks = [];
+            return new Promise((resolve) => {
+                const div = document.createElement('div');
+                const button = document.createElement('button');
+                button.textContent = 'Clique para Gravar';
+                button.style.cssText = "padding: 10px; border-radius: 5px; background: #4CAF50; color: white; cursor: pointer;";
+                document.body.appendChild(div);
+                div.appendChild(button);
+                recorder.ondataavailable = (e) => chunks.push(e.data);
+                button.onclick = () => {
+                    if (recorder.state === 'inactive') {
+                        recorder.start();
+                        button.textContent = 'Parar Gravação';
+                        button.style.background = "#f44336";
+                    } else {
+                        recorder.stop();
+                        button.textContent = 'Processando...';
+                    }
+                };
+                recorder.onstop = async () => {
+                    const blob = new Blob(chunks, {type: 'audio/wav'});
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = () => resolve(reader.result);
+                    div.remove();
+                };
+            });
+        }
+    ''')
+    display(js) [cite: 44]
+    data = output.eval_js('recordAudio()') [cite: 45]
+    binary = base64.b64decode(data.split(',')[1]) [cite: 47]
+    with open(filename, 'wb') as f:
+        f.write(binary) [cite: 48]
+    return filename [cite: 50]
+
+def stt_processor(audio_file):
+    """Converte fala em texto (Speech-to-Text) [cite: 54, 55]"""
+    recognizer = sr.Recognizer() [cite: 55]
+    if not os.path.exists(audio_file): [cite: 56]
+        return None
+    try:
+        # Conversão de formato para compatibilidade [cite: 61, 62]
+        audio = AudioSegment.from_file(audio_file)
+        wav_filename = "converted_audio.wav"
+        audio.export(wav_filename, format="wav")
+        
+        with sr.AudioFile(wav_filename) as source: [cite: 63]
+            recognizer.adjust_for_ambient_noise(source, duration=0.5) [cite: 64]
+            audio_data = recognizer.record(source)
+            text = recognizer.recognize_google(audio_data, language="pt-BR") [cite: 66]
+            return text
+    except Exception as e:
+        print(f"DEBUG: Erro no processamento: {e}") [cite: 70]
+        return None
+
+def tts_browser_processor(text):
+    """Faz o navegador ler a resposta em voz alta (Text-to-Speech) [cite: 72, 73]"""
+    safe_text = text.replace("'", "\\'").replace("\n", "") [cite: 74]
+    js_code = f'''
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance('{safe_text}');
+        utterance.lang = 'pt-BR';
+        window.speechSynthesis.speak(utterance);
+    '''
+    display(Javascript(js_code)) [cite: 78]
+
+# --- LÓGICA FINANCEIRA E IA ---
+
+def get_market_data():
+    """Busca cotações em tempo real [cite: 118, 119]"""
+    try:
+        tickers = {"Dólar": "USDBRL=X", "Ibovespa": "^BVSP"} [cite: 121]
+        info = ""
+        for name, ticker in tickers.items(): [cite: 122]
+            data = yf.Ticker(ticker).history(period="1d") [cite: 124]
+            price = data['Close'].iloc[-1] [cite: 125]
+            info += f"{name}: R$ {price:.2f}. " [cite: 126]
+        return info
+    except:
+        return "Não consegui buscar dados em tempo real agora." [cite: 129]
+
+def financial_brain(user_query):
+    """Processa a dúvida usando o Gemini com contexto de mercado [cite: 130, 131]"""
+    market_context = get_market_data() [cite: 131]
+    prompt = f"""
+    Você é um assistente financeiro brasileiro especializado e amigável.
+    Contexto atual do mercado: {market_context}
+    Data de hoje: {datetime.now().strftime('%d/%m/%Y')}
+    Pergunta do usuário: {user_query}
+    Responda de forma curta, clara e objetiva.
+    Se o usuário perguntar sobre investimentos, lembre-o que isso não é uma recomendação oficial.
+    """ [cite: 132, 133, 134, 136, 137]
+    response = model.generate_content(prompt) [cite: 138]
+    return response.text [cite: 139]
+
+# --- EXECUÇÃO PRINCIPAL ---
+
+def financial_assistant():
+    """Interface principal do assistente [cite: 140]"""
+    print("--- ASSISTENTE FINANCEIRO ATIVO ---") [cite: 141, 142]
+    print("Como deseja interagir? [1] Voz | [2] Texto") [cite: 143]
+    choice = input("Escolha: ") [cite: 144]
+    
+    user_input = ""
+    if choice == "1":
+        path = record_audio() [cite: 146]
+        user_input = stt_processor(path) [cite: 146]
+    else:
+        user_input = input("Digite sua dúvida financeira: ") [cite: 148]
+        
+    if user_input:
+        print(f"\n Você: {user_input}") [cite: 150]
+        response_text = financial_brain(user_input) [cite: 151]
+        print(f"\n Assistente: {response_text}") [cite: 152]
+        tts_browser_processor(response_text) [cite: 154]
+    else:
+        print("Não entendi sua mensagem.") [cite: 156]
+
+# Iniciar o assistente
+financial_assistant() [cite: 158]
